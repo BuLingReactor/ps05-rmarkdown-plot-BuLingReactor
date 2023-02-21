@@ -1,6 +1,7 @@
-dataset <- dataset <- read.delim("gapminder.csv", header = TRUE)
+dataset <- read.delim("gapminder.csv", header = TRUE)
     
 cat("There are", nrow(dataset), "rows and", ncol(dataset), "columns.\n")
+head(dataset)
 
 length(unique(dataset$iso3))
 length(unique(dataset$iso2))
@@ -27,8 +28,8 @@ compare2 <- compare("name", "iso3")
 print(unique(compare2$count))
 print(unique(dataset[dataset$name == compare2[compare2$count != 1, ]$find, ]$iso3))
 
-max(dataset$time, na.rm = TRUE)
-min(dataset$time, na.rm = TRUE)
+cat("Year max: ", max(dataset$time, na.rm = TRUE))
+cat("Year min: ", min(dataset$time, na.rm = TRUE))
 
 library(dplyr)
 
@@ -65,16 +66,48 @@ ggplot(subset_data, aes(x = time, y = co2_PC, group = name, color = name)) +
 
 library(tidyr)
 
-# Group the data by year and region, and summarize the mean CO2 emissions per capita
 avg_co2_pc_by_year_region <- dataset %>% 
     group_by(time, region) %>% 
+    filter(name != "") %>% 
     summarize(mean_co2_pc = mean(co2_PC, na.rm = TRUE)) 
+wide_avg_co2_pc_by_year_region <- 
+    spread(avg_co2_pc_by_year_region, key = region, value = mean_co2_pc) %>%
+    select(-V1)
+print(wide_avg_co2_pc_by_year_region)
 
-# Reshape the data into a wide format with years as rows and continents as columns
-wide_avg_co2_pc_by_year_region <- spread(avg_co2_pc_by_year_region, key = region, value = mean_co2_pc)
+# wide_avg_co2_pc_by_year_region <- wide_avg_co2_pc_by_year_region %>%
+#    filter(time %in% c(1960, 2016))
+# wide_avg_co2_pc_by_year_region <-
+#     as.data.frame(t(wide_avg_co2_pc_by_year_region))[-1, ]
+# colnames(wide_avg_co2_pc_by_year_region) = c("1960", "2016")
+# print(wide_avg_co2_pc_by_year_region)
 
-# Print the results
-print(wide_avg_co2_pc_by_year_region, n = 100)
+# require(reshape2)
+# wide_avg_co2_pc_by_year_region <- melt(wide_avg_co2_pc_by_year_region, id = "time")
+
+avg_co2_pc_by_year_region <- avg_co2_pc_by_year_region %>%
+    filter(time %in% c(1960, 2016)) %>%
+    ungroup()
+# avg_co2_pc_by_year_region <- melt(avg_co2_pc_by_year_region, id = "time")
+avg_co2_pc_by_year_region$time <- as.character(avg_co2_pc_by_year_region$time)
+
+ggplot(avg_co2_pc_by_year_region,
+    aes(x = region, y = mean_co2_pc, fill = time)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    labs(x = "Continent", y = "Average CO2 emissions per capita")
+
+emitters <- dataset %>%
+    group_by(region) %>%
+    filter(time == 2016 & region != "") %>%
+    filter(!is.na(co2_PC)) %>%
+    select("name", "co2_PC")
+    
+largest_emitters <- emitters %>% arrange(desc(co2_PC)) %>% slice(1:3)
+print(largest_emitters)
+smallest_emitters <- emitters %>% arrange(co2_PC) %>% slice(1:3)
+print(smallest_emitters)
+
+# PART 4
 
 data_1960 <- subset(dataset, time == 1960)
 data_1960 <- data_1960[data_1960$region != "", ]
@@ -127,31 +160,57 @@ for (i in unique(average_LE_growth_raw$region)) {
         filter(region == i) %>%
         mutate(prev = lag(avg_life_expectancy), growth = avg_life_expectancy - prev) %>%
         select(time, growth) %>%
-        rename(!!paste("growth", i) := growth)
-    print(tmp)
+        rename(!!paste("growth", i)  := growth)
+#    print(tmp)
     average_LE_growth <- merge(average_LE_growth, tmp, by = "time")
 }
 
 print(average_LE_growth)
 
 gdp_pc_data <- dataset %>%
-    select(iso2, GDP_PC, time) %>%
-    group_by(iso2) %>%
-    filter(time %in% c(1960, 2019), iso2 != "") %>%
-    spread(key = time, value = GDP_PC) %>%
-    filter(!is.na(`1960`) | !is.na(`2019`))
+    select(name, GDP_PC, time) %>%
+    filter(time %in% c(1960, 2019), name != "") %>%
+    group_by(name) %>%
+    filter(!any(is.na(`GDP_PC`)), 1960 %in% time & 2019 %in% time) %>%
+    ungroup()
 
-ggplot(melt(bucket), aes(x = `iso2`, fill = `1960`)) +
-    geom_bar(stat="identity") +
-    xlab("Miles per Gallon") +
-    ylab("Frequency") +
-    ggtitle("Histogram of Miles per Gallon") +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size = 6))
-ggplot(data = gdp_pc_data, aes(x = `iso2`, y = `2019`)) +
-    geom_bar(stat="identity") +
-    xlab("Miles per Gallon") +
-    ylab("Frequency") +
-    ggtitle("Histogram of Miles per Gallon") +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size = 6))
+ #   select(iso2, GDP_PC, time) %>%
+ #   group_by(iso2)#%>%
+ #    %>%
+ #   spread(key = time, value = GDP_PC) %>%
+ #   filter(!is.na(`1960`) | !is.na(`2019`))
 
+gdp_pc_data$time = as.character(gdp_pc_data$time)
+gdp_pc_data[gdp_pc_data$time == 2019, ]$GDP_PC = gdp_pc_data[gdp_pc_data$time == 2019, ]$GDP_PC -
+    gdp_pc_data[gdp_pc_data$time == 1960, ]$GDP_PC
+
+ggplot(data = gdp_pc_data, aes(x = `name`, y = `GDP_PC`, fill = `time`)) +
+    geom_bar(stat="identity") +
+    geom_col(position = position_stack(reverse = TRUE)) + 
+    xlab("Countries by name") +
+    ylab("GDP per captia") +
+    ggtitle("Histogram of GDP per capita by countries, 1960 and 2019") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size = 5))
+
+rank_1960 <- dataset %>% 
+    filter(time == 1960, name != "", lifeExpectancy != "") %>% 
+    mutate(rank = rank(-lifeExpectancy)) %>%
+    select("iso2", rank)
+
+cat("The rank of LE of USA in the world in 1960 is", 
+    rank_1960[rank_1960$iso2 == "US", ]$rank, "\n")
+
+rank_2019 <- dataset %>% 
+    filter(time == 2019, iso3 != "", lifeExpectancy != "") %>% 
+    mutate(rank = rank(-lifeExpectancy)) %>%
+    select("iso2", rank)
+
+cat("The rank of LE of USA in the world in 2019 is", 
+    rank_2019[rank_2019$iso2 == "US", ]$rank, "\n")
+
+cat("The relative rank of LE of USA in the world in 1960 is", 
+    rank_1960[rank_1960$iso2 == "US", ]$rank / nrow(rank_1960), "\n")
+
+cat("The relative rank of LE of USA in the world in 2019 is", 
+    rank_2019[rank_2019$iso2 == "US", ]$rank / nrow(rank_2019), "\n")
        
